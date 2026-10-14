@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: videoanalyst_postgres
+    environment:
+      POSTGRES_USER: analyst_admin
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: videoanalyst_x
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: videoanalyst_redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+  vision_service:
+    build: ./services/vision_service
+    container_name: videoanalyst_vision
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - YOLO_WEIGHTS=yolov8n.pt
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  analysis_service:
+    build: ./services/analysis_service
+    container_name: videoanalyst_analysis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://analyst_admin:supersecretpassword@postgres:5432/videoanalyst_x
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  genai_service:
+    build: ./services/genai_service
+    container_name: videoanalyst_genai
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-3.8-flash
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: videoanalyst_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=3000
+    depends_on:
+      - vision_service
+      - analysis_service
+      - genai_service
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,6 @@
+{
+  "name": "VideoAnalyst X",
+  "description": "منصة تحليل فيديوهات رياضية وبث مباشر بالذكاء الاصطناعي - AI Sports Video & Tactical Analytics Platform",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
