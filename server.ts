@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import JSZip from 'jszip';
 import { GoogleGenAI } from '@google/genai';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
@@ -48,6 +50,24 @@ interface FrameTelemetry {
 }
 
 const matchStates: Record<string, { frameIdx: number; startTime: number; streamUrl: string }> = {};
+
+interface UploadRecord {
+  id: string;
+  filePath: string;
+  originalName: string;
+  status: 'processing' | 'completed' | 'failed';
+  uploadedAt: string;
+  completedAt?: string;
+}
+
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+const uploadRecords = new Map<string, UploadRecord>();
+const videoUpload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
 
 const DEFAULT_MATCH_EVENTS = [
   {
@@ -132,6 +152,82 @@ function generateSimulatedFrame(frameIdx: number, fps: number = 25): FrameTeleme
     players,
   };
 }
+
+// Phase 1: Mock video upload and analysis lifecycle
+app.post('/api/upload', videoUpload.single('file'), (req: Request, res: Response) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'A video file is required in the "file" field' });
+  }
+
+  const id = uuidv4();
+  const uploadedAt = new Date().toISOString();
+  const record: UploadRecord = {
+    id,
+    filePath: req.file.path,
+    originalName: req.file.originalname,
+    status: 'processing',
+    uploadedAt,
+  };
+
+  uploadRecords.set(id, record);
+
+  setTimeout(() => {
+    const current = uploadRecords.get(id);
+    if (current) {
+      current.status = 'completed';
+      current.completedAt = new Date().toISOString();
+    }
+  }, 5000);
+
+  return res.status(201).json({
+    id,
+    status: record.status,
+    message: 'تم رفع الفيديو وبدأ التحليل التجريبي بنجاح',
+  });
+});
+
+app.get('/api/status/:id', (req: Request, res: Response) => {
+  const record = uploadRecords.get(req.params.id);
+  if (!record) {
+    return res.status(404).json({ error: 'Upload not found' });
+  }
+
+  const elapsedMs = Date.now() - Date.parse(record.uploadedAt);
+  const progress = record.status === 'completed' ? 100 : Math.min(95, Math.floor((elapsedMs / 5000) * 95));
+
+  return res.json({
+    id: record.id,
+    status: record.status,
+    progress,
+    uploadedAt: record.uploadedAt,
+  });
+});
+
+app.get('/api/results/:id', (req: Request, res: Response) => {
+  const record = uploadRecords.get(req.params.id);
+  if (!record) {
+    return res.status(404).json({ error: 'Upload not found' });
+  }
+
+  if (record.status !== 'completed') {
+    return res.status(409).json({ error: 'Analysis is still processing', status: record.status });
+  }
+
+  const frames = Array.from({ length: 10 }, (_, index) => generateSimulatedFrame(index));
+  const averagePressure = frames.reduce((sum, frame) => sum + frame.pressure_index, 0) / frames.length;
+
+  return res.json({
+    id: record.id,
+    events: DEFAULT_MATCH_EVENTS,
+    stats: {
+      event_count: DEFAULT_MATCH_EVENTS.length,
+      frame_count: frames.length,
+      average_pressure_index: Math.round(averagePressure * 100) / 100,
+      source_file: record.originalName,
+    },
+    frames,
+  });
+});
 
 // 1. API: Start live stream
 app.post('/api/v1/vision/stream/start', (req: Request, res: Response) => {
