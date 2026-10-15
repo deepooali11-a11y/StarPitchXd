@@ -9,6 +9,8 @@ import { AIChatSidebar } from './components/AIChatSidebar.tsx';
 import { ShortClipModal } from './components/ShortClipModal.tsx';
 import { PdfReportModal } from './components/PdfReportModal.tsx';
 import { ProjectZipModal } from './components/ProjectZipModal.tsx';
+import { VideoUploadModal } from './components/VideoUploadModal';
+import type { AnalysisResults } from './lib/types';
 import {
   Radio,
   Download,
@@ -28,6 +30,7 @@ import {
   Sparkles,
   Shield,
   Crosshair,
+  Upload as UploadIcon,
 } from 'lucide-react';
 
 export default function App() {
@@ -59,6 +62,8 @@ export default function App() {
   const [isClipModalOpen, setIsClipModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isZipModalOpen, setIsZipModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadResults, setUploadResults] = useState<AnalysisResults | null>(null);
 
   // Poll live telemetry from server or simulated stream
   useEffect(() => {
@@ -171,6 +176,14 @@ export default function App() {
             <span className="text-slate-400">زمن الاستجابة:</span>
             <span className="text-emerald-400 font-bold font-mono">{latencyMs} ms</span>
           </div>
+
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition"
+          >
+            <UploadIcon size={16} />
+            رفع فيديو
+          </button>
 
           <button
             onClick={() => setIsClipModalOpen(true)}
@@ -452,6 +465,14 @@ export default function App() {
       <ProjectZipModal
         isOpen={isZipModalOpen}
         onClose={() => setIsZipModalOpen(false)}
+      />
+      <VideoUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onResultsReady={(results) => {
+          setUploadResults(results);
+          setClipResult(results as any);
+        }}
       />
     </main>
   );
